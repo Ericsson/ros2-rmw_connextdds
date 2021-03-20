@@ -118,6 +118,7 @@ rmw_api_connextdds_take_event(
 
   *taken = false;
 
+#if !RMW_CONNEXT_CPP_STD_WAITSETS
   RMW_Connext_StatusCondition * condition = nullptr;
   if (RMW_Connext_Event::reader_event(event_handle)) {
     condition = RMW_Connext_Event::subscriber(event_handle)->condition();
@@ -129,6 +130,25 @@ rmw_api_connextdds_take_event(
     RMW_CONNEXT_LOG_ERROR_SET("failed to get status from DDS entity")
     return rc;
   }
+#else
+  if (RMW_Connext_Event::reader_event(event_handle)) {
+    rmw_ret_t rc = RMW_Connext_Event::subscriber(
+      event_handle)->condition()->get_status(event_handle->event_type, event_info);
+    if (RMW_RET_OK != rc)
+    {
+      RMW_CONNEXT_LOG_ERROR_SET("failed to get reader status")
+      return RMW_RET_ERROR;
+    }
+  } else {
+    rmw_ret_t rc = RMW_Connext_Event::publisher(
+      event_handle)->condition()->get_status(event_handle->event_type, event_info);
+    if (RMW_RET_OK != rc)
+    {
+      RMW_CONNEXT_LOG_ERROR_SET("failed to get writer status")
+      return RMW_RET_ERROR;
+    }
+  }
+#endif /* RMW_CONNEXT_CPP_STD_WAITSETS */
 
   *taken = true;
   return RMW_RET_OK;
