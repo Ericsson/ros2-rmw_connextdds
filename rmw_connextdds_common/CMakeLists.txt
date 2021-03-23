@@ -167,6 +167,8 @@ set(RMW_CONNEXT_COMMON_SOURCE_CPP
     src/common/rmw_graph.cpp
     src/common/rmw_event.cpp
     src/common/rmw_impl.cpp
+    src/common/rmw_impl_waitset_dds.cpp
+    src/common/rmw_impl_waitset_std.cpp
     src/common/rmw_info.cpp
     src/common/rmw_node.cpp
     src/common/rmw_publication.cpp
@@ -190,6 +192,8 @@ set(RMW_CONNEXT_COMMON_SOURCE_HPP
     include/rmw_connextdds/resource_limits.hpp
     include/rmw_connextdds/rmw_impl.hpp
     include/rmw_connextdds/rmw_api_impl.hpp
+    include/rmw_connextdds/rmw_waitset_dds.hpp
+    include/rmw_connextdds/rmw_waitset_std.hpp
     include/rmw_connextdds/scope_exit.hpp
     include/rmw_connextdds/static_config.hpp
     include/rmw_connextdds/type_support.hpp

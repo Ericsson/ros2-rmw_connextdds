@@ -164,8 +164,7 @@ rmw_connextdds_discovery_thread(rmw_context_impl_t * ctx)
   attached_partinfo = true;
   attached_conditions += 1;
 
-  if (DDS_RETCODE_OK != DDS_WaitSet_attach_condition(waitset, cond_exit))
-  {
+  if (DDS_RETCODE_OK != DDS_WaitSet_attach_condition(waitset, cond_exit)) {
     RMW_CONNEXT_LOG_ERROR_SET(
       "failed to attach exit condition to discovery thread waitset")
     goto cleanup;
@@ -265,7 +264,8 @@ rmw_connextdds_discovery_thread(rmw_context_impl_t * ctx)
       if (RMW_RET_OK != gcond_exit->_detach(waitset)) {
 #else
       if (DDS_RETCODE_OK !=
-        DDS_WaitSet_detach_condition(waitset, cond_exit)) {
+        DDS_WaitSet_detach_condition(waitset, cond_exit))
+      {
 #endif /* RMW_CONNEXT_CPP_STD_WAITSETS */
         RMW_CONNEXT_LOG_ERROR_SET(
           "failed to detach graph condition from "
@@ -278,7 +278,8 @@ rmw_connextdds_discovery_thread(rmw_context_impl_t * ctx)
       if (RMW_RET_OK != sub_partinfo->condition()->_detach(waitset)) {
 #else
       if (DDS_RETCODE_OK !=
-        DDS_WaitSet_detach_condition(waitset, cond_partinfo)) {
+        DDS_WaitSet_detach_condition(waitset, cond_partinfo))
+      {
 #endif /* RMW_CONNEXT_CPP_STD_WAITSETS */
         RMW_CONNEXT_LOG_ERROR_SET(
           "failed to detach participant info condition from "

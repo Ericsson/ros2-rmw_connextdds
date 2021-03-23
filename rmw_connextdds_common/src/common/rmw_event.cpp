@@ -134,16 +134,14 @@ rmw_api_connextdds_take_event(
   if (RMW_Connext_Event::reader_event(event_handle)) {
     rmw_ret_t rc = RMW_Connext_Event::subscriber(
       event_handle)->condition()->get_status(event_handle->event_type, event_info);
-    if (RMW_RET_OK != rc)
-    {
+    if (RMW_RET_OK != rc) {
       RMW_CONNEXT_LOG_ERROR_SET("failed to get reader status")
       return RMW_RET_ERROR;
     }
   } else {
     rmw_ret_t rc = RMW_Connext_Event::publisher(
       event_handle)->condition()->get_status(event_handle->event_type, event_info);
-    if (RMW_RET_OK != rc)
-    {
+    if (RMW_RET_OK != rc) {
       RMW_CONNEXT_LOG_ERROR_SET("failed to get writer status")
       return RMW_RET_ERROR;
     }
