@@ -575,29 +575,13 @@ protected:
 class RMW_Connext_Event
 {
 public:
-  static
+  static inline
   RMW_Connext_StatusCondition *
-  condition(const rmw_event_t * const event)
-  {
-    if (RMW_Connext_Event::reader_event(event)) {
-      return RMW_Connext_Event::subscriber(event)->condition();
-    } else {
-      return RMW_Connext_Event::publisher(event)->condition();
-    }
-  }
+  condition(const rmw_event_t * const event);
 
-  static
+  static inline
   bool
-  active(rmw_event_t * const event)
-  {
-    RMW_Connext_StatusCondition * condition = nullptr;
-    if (RMW_Connext_Event::reader_event(event)) {
-      condition = RMW_Connext_Event::subscriber(event)->condition();
-    } else {
-      condition = RMW_Connext_Event::publisher(event)->condition();
-    }
-    return condition->has_status(event->event_type);
-  }
+  active(rmw_event_t * const event);
 
   static
   bool

@@ -21,10 +21,6 @@
 
 #include "rmw_connextdds/graph_cache.hpp"
 
-#if RMW_CONNEXT_HAVE_TIME_UTILS
-#include "rmw_dds_common/time_utils.hpp"
-#endif /* RMW_CONNEXT_HAVE_TIME_UTILS */
-
 #define ROS_SERVICE_REQUESTER_PREFIX_STR "rq"
 #define ROS_SERVICE_RESPONSE_PREFIX_STR  "rr"
 

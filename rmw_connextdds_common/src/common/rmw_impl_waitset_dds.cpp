@@ -16,6 +16,10 @@
 
 #include "rmw_connextdds/rmw_impl.hpp"
 
+#if RMW_CONNEXT_HAVE_TIME_UTILS
+#include "rmw_dds_common/time_utils.hpp"
+#endif /* RMW_CONNEXT_HAVE_TIME_UTILS */
+
 #if !RMW_CONNEXT_CPP_STD_WAITSETS
 /******************************************************************************
  * WaitSet
@@ -793,6 +797,31 @@ RMW_Connext_SubscriberStatusCondition::install()
   }
 
   return RMW_RET_OK;
+}
+
+/******************************************************************************
+ * Event wrapper
+ ******************************************************************************/
+RMW_Connext_StatusCondition *
+RMW_Connext_Event::condition(const rmw_event_t * const event)
+{
+  if (RMW_Connext_Event::reader_event(event)) {
+    return RMW_Connext_Event::subscriber(event)->condition();
+  } else {
+    return RMW_Connext_Event::publisher(event)->condition();
+  }
+}
+
+bool
+RMW_Connext_Event::active(rmw_event_t * const event)
+{
+  RMW_Connext_StatusCondition * condition = nullptr;
+  if (RMW_Connext_Event::reader_event(event)) {
+    condition = RMW_Connext_Event::subscriber(event)->condition();
+  } else {
+    condition = RMW_Connext_Event::publisher(event)->condition();
+  }
+  return condition->has_status(event->event_type);
 }
 
 #endif /* !RMW_CONNEXT_CPP_STD_WAITSETS */
