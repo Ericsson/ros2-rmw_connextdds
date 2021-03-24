@@ -632,18 +632,10 @@ RMW_Connext_Publisher::RMW_Connext_Publisher(
   dds_writer(dds_writer),
   type_support(type_support),
   created_topic(created_topic),
-#if !RMW_CONNEXT_CPP_STD_WAITSETS
   status_condition(dds_writer)
-#else
-  _dds_condition(nullptr)
-#endif /* RMW_CONNEXT_CPP_STD_WAITSETS */
 {
   rmw_connextdds_get_entity_gid(this->dds_writer, this->ros_gid);
 #if RMW_CONNEXT_CPP_STD_WAITSETS
-  DDS_StatusCondition * const status_cond =
-    DDS_Entity_get_statuscondition(
-    DDS_DataWriter_as_entity(this->dds_writer));
-  this->_dds_condition = DDS_StatusCondition_as_condition(status_cond);
   if (RMW_RET_OK != this->status_condition.install(this)) {
     RMW_CONNEXT_LOG_ERROR("failed to install condition on writer")
     throw std::runtime_error("failed to install condition on writer");
@@ -829,10 +821,8 @@ RMW_Connext_Publisher::finalize()
     "finalizing publisher: pub=%p, type=%s",
     (void *)this, this->type_support->type_name())
 
-#if !RMW_CONNEXT_CPP_STD_WAITSETS
   // Make sure publisher's condition is detached from any waitset
   this->status_condition.invalidate();
-#endif /* RMW_CONNEXT_CPP_STD_WAITSETS */
 
   if (DDS_RETCODE_OK !=
     DDS_Publisher_delete_datawriter(
@@ -1135,12 +1125,7 @@ RMW_Connext_Subscriber::RMW_Connext_Subscriber(
   dds_topic_cft(dds_topic_cft),
   type_support(type_support),
   created_topic(created_topic),
-  status_condition(dds_reader, ignore_local)
-#if RMW_CONNEXT_CPP_STD_WAITSETS
-  ,
-  _dds_condition(nullptr),
-  _loan_guard_condition(nullptr)
-#endif /* RMW_CONNEXT_CPP_STD_WAITSETS */
+  status_condition(dds_reader, ignore_local, internal)
 {
   rmw_connextdds_get_entity_gid(this->dds_reader, this->ros_gid);
 
@@ -1151,11 +1136,7 @@ RMW_Connext_Subscriber::RMW_Connext_Subscriber(
   this->loan_info = def_info_seq;
   this->loan_len = 0;
   this->loan_next = 0;
-
 #if RMW_CONNEXT_CPP_STD_WAITSETS
-  DDS_StatusCondition * const status_cond =
-    DDS_Entity_get_statuscondition(DDS_DataReader_as_entity(this->dds_reader));
-  this->_dds_condition = DDS_StatusCondition_as_condition(status_cond);
   if (RMW_RET_OK != this->status_condition.install(this)) {
     RMW_CONNEXT_LOG_ERROR("failed to install condition on reader")
     throw std::runtime_error("failed to install condition on reader");
@@ -1365,18 +1346,6 @@ RMW_Connext_Subscriber::create(
   scope_exit_topic_delete.cancel();
   scope_exit_dds_reader_delete.cancel();
 
-#if RMW_CONNEXT_CPP_STD_WAITSETS
-  if (rmw_sub_impl->internal) {
-    rmw_sub_impl->_loan_guard_condition = DDS_GuardCondition_new();
-    if (nullptr == rmw_sub_impl->_loan_guard_condition) {
-      RMW_CONNEXT_LOG_ERROR_SET("failed to allocate internal reader condition ")
-      rmw_sub_impl->finalize();
-      delete rmw_sub_impl;
-      return nullptr;
-    }
-  }
-#endif /* RMW_CONNEXT_CPP_STD_WAITSETS */
-
   return rmw_sub_impl;
 }
 
@@ -1387,10 +1356,8 @@ RMW_Connext_Subscriber::finalize()
     "finalizing subscriber: sub=%p, type=%s",
     (void *)this, this->type_support->type_name())
 
-#if !RMW_CONNEXT_CPP_STD_WAITSETS
   // Make sure subscriber's condition is detached from any waitset
   this->status_condition.invalidate();
-#endif /* RMW_CONNEXT_CPP_STD_WAITSETS */
 
   if (this->loan_len > 0) {
     this->loan_next = this->loan_len;
@@ -1441,15 +1408,6 @@ RMW_Connext_Subscriber::finalize()
   if (RMW_RET_OK != rc) {
     return rc;
   }
-
-#if RMW_CONNEXT_CPP_STD_WAITSETS
-  if (nullptr != this->_loan_guard_condition) {
-    if (DDS_RETCODE_OK != DDS_GuardCondition_delete(this->_loan_guard_condition)) {
-      RMW_CONNEXT_LOG_ERROR_SET("failed to delete internal reader condition ")
-      return RMW_RET_ERROR;
-    }
-  }
-#endif /* RMW_CONNEXT_CPP_STD_WAITSETS */
 
   delete this->type_support;
   this->type_support = nullptr;
@@ -1590,11 +1548,10 @@ RMW_Connext_Subscriber::loan_messages()
     "[%s] loaned messages: %lu",
     this->type_support->type_name(), this->loan_len)
 
-#if !RMW_CONNEXT_CPP_STD_WAITSETS
   if (this->loan_len > 0) {
     return this->status_condition.set_data_available(true);
   }
-#endif /* RMW_CONNEXT_CPP_STD_WAITSETS */
+
   return RMW_RET_OK;
 }
 
@@ -1617,12 +1574,10 @@ RMW_Connext_Subscriber::return_messages()
     rc_result = rc;
   }
 
-#if !RMW_CONNEXT_CPP_STD_WAITSETS
   rc = this->status_condition.set_data_available(false);
   if (RMW_RET_OK != rc) {
     rc_result = rc;
   }
-#endif /* RMW_CONNEXT_CPP_STD_WAITSETS */
 
   return rc_result;
 }
@@ -1954,14 +1909,8 @@ rmw_connextdds_message_info_from_dds(
 rmw_guard_condition_t *
 rmw_connextdds_create_guard_condition(const bool internal)
 {
-#if !RMW_CONNEXT_CPP_STD_WAITSETS
-  UNUSED_ARG(internal);
-  RMW_Connext_GuardCondition * const gcond =
-    new (std::nothrow) RMW_Connext_GuardCondition();
-#else
   RMW_Connext_GuardCondition * const gcond =
     new (std::nothrow) RMW_Connext_GuardCondition(internal);
-#endif /* RMW_CONNEXT_CPP_STD_WAITSETS */
 
   if (nullptr == gcond) {
     RMW_CONNEXT_LOG_ERROR_SET("failed to create guard condition")
@@ -2001,12 +1950,7 @@ rmw_connextdds_trigger_guard_condition(
   RMW_Connext_GuardCondition * const gcond =
     reinterpret_cast<RMW_Connext_GuardCondition *>(gcond_handle->data);
 
-#if !RMW_CONNEXT_CPP_STD_WAITSETS
   return gcond->trigger();
-#else
-  gcond->trigger();
-  return RMW_RET_OK;
-#endif /* RMW_CONNEXT_CPP_STD_WAITSETS */
 }
 
 rmw_wait_set_t *
@@ -3086,97 +3030,31 @@ rmw_ret_t
 RMW_Connext_SubscriberStatusCondition::get_status(
   const rmw_event_type_t event_type, void * const event_info)
 {
+  rmw_ret_t rc = RMW_RET_ERROR;
+
   switch (event_type) {
     case RMW_EVENT_LIVELINESS_CHANGED:
       {
         rmw_liveliness_changed_status_t * status =
           reinterpret_cast<rmw_liveliness_changed_status_t *>(event_info);
-#if !RMW_CONNEXT_CPP_STD_WAITSETS
-        DDS_LivelinessChangedStatus dds_status = DDS_LivelinessChangedStatus_INITIALIZER;
 
-        if (DDS_RETCODE_OK !=
-          DDS_DataReader_get_liveliness_changed_status(this->reader, &dds_status))
-        {
-          RMW_CONNEXT_LOG_ERROR_SET("failed to get liveliness changed status")
-          return RMW_RET_ERROR;
-        }
-
-        status->alive_count = dds_status.alive_count;
-        status->alive_count_change = dds_status.alive_count_change;
-        status->not_alive_count = dds_status.not_alive_count;
-        status->not_alive_count_change = dds_status.not_alive_count_change;
-#else
-        status->alive_count = this->status_liveliness.alive_count;
-        status->alive_count_change =
-          this->status_liveliness.alive_count_change;
-        status->not_alive_count =
-          this->status_liveliness.not_alive_count;
-        status->not_alive_count_change =
-          this->status_liveliness.not_alive_count_change;
-
-        this->status_liveliness.alive_count_change = 0;
-        this->status_liveliness.not_alive_count_change = 0;
-        this->triggered_liveliness = false;
-#endif /* RMW_CONNEXT_CPP_STD_WAITSETS */
+        rc = this->get_liveliness_changed_status(status);
         break;
       }
     case RMW_EVENT_REQUESTED_DEADLINE_MISSED:
       {
         rmw_requested_deadline_missed_status_t * status =
           reinterpret_cast<rmw_requested_deadline_missed_status_t *>(event_info);
-#if !RMW_CONNEXT_CPP_STD_WAITSETS
-        DDS_RequestedDeadlineMissedStatus dds_status =
-          DDS_RequestedDeadlineMissedStatus_INITIALIZER;
 
-        if (DDS_RETCODE_OK !=
-          DDS_DataReader_get_requested_deadline_missed_status(this->reader, &dds_status))
-        {
-          RMW_CONNEXT_LOG_ERROR_SET("failed to get requested deadline missed status")
-          return RMW_RET_ERROR;
-        }
-
-        status->total_count = dds_status.total_count;
-        status->total_count_change = dds_status.total_count_change;
-#else
-        status->total_count = this->status_deadline.total_count;
-        status->total_count_change =
-          this->status_deadline.total_count_change;
-
-        this->status_deadline.total_count_change = 0;
-        this->triggered_deadline = false;
-#endif /* RMW_CONNEXT_CPP_STD_WAITSETS */
+        rc = this->get_requested_deadline_missed_status(status);
         break;
       }
     case RMW_EVENT_REQUESTED_QOS_INCOMPATIBLE:
       {
         rmw_requested_qos_incompatible_event_status_t * const status =
           reinterpret_cast<rmw_requested_qos_incompatible_event_status_t *>(event_info);
-#if !RMW_CONNEXT_CPP_STD_WAITSETS
-        DDS_RequestedIncompatibleQosStatus dds_status =
-          DDS_RequestedIncompatibleQosStatus_INITIALIZER;
 
-        if (DDS_RETCODE_OK !=
-          DDS_DataReader_get_requested_incompatible_qos_status(this->reader, &dds_status))
-        {
-          RMW_CONNEXT_LOG_ERROR_SET("failed to get requested incompatible qos status")
-          return RMW_RET_ERROR;
-        }
-
-        status->total_count = dds_status.total_count;
-        status->total_count_change = dds_status.total_count_change;
-        status->last_policy_kind =
-          dds_qos_policy_to_rmw_qos_policy(dds_status.last_policy_id);
-#else
-        status->total_count = this->status_qos.total_count;
-        status->total_count_change =
-          this->status_qos.total_count_change;
-        status->last_policy_kind =
-          dds_qos_policy_to_rmw_qos_policy(
-          this->status_qos.last_policy_id);
-
-        this->status_qos.total_count_change = 0;
-        this->triggered_qos = false;
-#endif /* RMW_CONNEXT_CPP_STD_WAITSETS */
+        rc = this->get_requested_qos_incompatible_status(status);
         break;
       }
 // Avoid warnings caused by RMW_EVENT_MESSAGE_LOST not being one of
@@ -3188,26 +3066,8 @@ RMW_Connext_SubscriberStatusCondition::get_status(
       {
         rmw_message_lost_status_t * const status =
           reinterpret_cast<rmw_message_lost_status_t *>(event_info);
-#if !RMW_CONNEXT_CPP_STD_WAITSETS
-        DDS_SampleLostStatus dds_status = DDS_SampleLostStatus_INITIALIZER;
 
-        if (DDS_RETCODE_OK !=
-          DDS_DataReader_get_sample_lost_status(this->reader, &dds_status))
-        {
-          RMW_CONNEXT_LOG_ERROR_SET("failed to get sample lost status")
-          return RMW_RET_ERROR;
-        }
-
-        status->total_count = dds_status.total_count;
-        status->total_count_change = dds_status.total_count_change;
-#else
-        status->total_count = this->status_sample_lost.total_count;
-        status->total_count_change =
-          this->status_sample_lost.total_count_change;
-
-        this->status_sample_lost.total_count_change = 0;
-        this->triggered_sample_lost = false;
-#endif /* RMW_CONNEXT_CPP_STD_WAITSETS */
+        rc = this->get_message_lost_status(status);
         break;
       }
 #endif /* RMW_CONNEXT_HAVE_MESSAGE_LOST */
@@ -3220,96 +3080,38 @@ RMW_Connext_SubscriberStatusCondition::get_status(
       }
   }
 
-  return RMW_RET_OK;
+  return rc;
 }
 
 rmw_ret_t
 RMW_Connext_PublisherStatusCondition::get_status(
   const rmw_event_type_t event_type, void * const event_info)
 {
+  rmw_ret_t rc = RMW_RET_ERROR;
+
   switch (event_type) {
     case RMW_EVENT_LIVELINESS_LOST:
       {
         rmw_liveliness_lost_status_t * status =
           reinterpret_cast<rmw_liveliness_lost_status_t *>(event_info);
-#if !RMW_CONNEXT_CPP_STD_WAITSETS
-        DDS_LivelinessLostStatus dds_status = DDS_LivelinessLostStatus_INITIALIZER;
 
-        if (DDS_RETCODE_OK !=
-          DDS_DataWriter_get_liveliness_lost_status(this->writer, &dds_status))
-        {
-          RMW_CONNEXT_LOG_ERROR_SET("failed to get liveliness lost status")
-          return RMW_RET_ERROR;
-        }
-
-        status->total_count = dds_status.total_count;
-        status->total_count_change = dds_status.total_count_change;
-#else
-        status->total_count = this->status_liveliness.total_count;
-        status->total_count_change =
-          this->status_liveliness.total_count_change;
-
-        this->status_liveliness.total_count_change = 0;
-        this->triggered_liveliness = false;
-#endif /* RMW_CONNEXT_CPP_STD_WAITSETS */
+        rc = this->get_liveliness_lost_status(status);
         break;
       }
     case RMW_EVENT_OFFERED_DEADLINE_MISSED:
       {
         rmw_offered_deadline_missed_status_t * status =
           reinterpret_cast<rmw_offered_deadline_missed_status_t *>(event_info);
-#if !RMW_CONNEXT_CPP_STD_WAITSETS
-        DDS_OfferedDeadlineMissedStatus dds_status = DDS_OfferedDeadlineMissedStatus_INITIALIZER;
 
-        if (DDS_RETCODE_OK !=
-          DDS_DataWriter_get_offered_deadline_missed_status(this->writer, &dds_status))
-        {
-          RMW_CONNEXT_LOG_ERROR_SET("failed to get offered deadline missed status")
-          return RMW_RET_ERROR;
-        }
-
-        status->total_count = dds_status.total_count;
-        status->total_count_change = dds_status.total_count_change;
-#else
-        status->total_count = this->status_deadline.total_count;
-        status->total_count_change =
-          this->status_deadline.total_count_change;
-
-        this->status_deadline.total_count_change = 0;
-        this->triggered_deadline = false;
-#endif /* RMW_CONNEXT_CPP_STD_WAITSETS */
+        rc = this->get_offered_deadline_missed_status(status);
         break;
       }
     case RMW_EVENT_OFFERED_QOS_INCOMPATIBLE:
       {
         rmw_offered_qos_incompatible_event_status_t * const status =
           reinterpret_cast<rmw_offered_qos_incompatible_event_status_t *>(event_info);
-#if !RMW_CONNEXT_CPP_STD_WAITSETS
-        DDS_OfferedIncompatibleQosStatus dds_status =
-          DDS_OfferedIncompatibleQosStatus_INITIALIZER;
 
-        if (DDS_RETCODE_OK !=
-          DDS_DataWriter_get_offered_incompatible_qos_status(this->writer, &dds_status))
-        {
-          RMW_CONNEXT_LOG_ERROR_SET("failed to get offered incompatible qos status")
-          return RMW_RET_ERROR;
-        }
-
-        status->total_count = dds_status.total_count;
-        status->total_count_change = dds_status.total_count_change;
-        status->last_policy_kind =
-          dds_qos_policy_to_rmw_qos_policy(dds_status.last_policy_id);
-#else
-        status->total_count = this->status_qos.total_count;
-        status->total_count_change =
-          this->status_qos.total_count_change;
-        status->last_policy_kind =
-          dds_qos_policy_to_rmw_qos_policy(
-          this->status_qos.last_policy_id);
-
-        this->status_qos.total_count_change = 0;
-        this->triggered_qos = false;
-#endif /* RMW_CONNEXT_CPP_STD_WAITSETS */
+        rc = this->get_offered_qos_incompatible_status(status);
         break;
       }
     default:
@@ -3320,5 +3122,5 @@ RMW_Connext_PublisherStatusCondition::get_status(
       }
   }
 
-  return RMW_RET_OK;
+  return rc;
 }

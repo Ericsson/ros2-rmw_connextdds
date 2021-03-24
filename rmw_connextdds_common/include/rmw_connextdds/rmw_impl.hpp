@@ -143,11 +143,8 @@ class RMW_Connext_Subscriber;
 class RMW_Connext_Client;
 class RMW_Connext_Service;
 
-#if !RMW_CONNEXT_CPP_STD_WAITSETS
 #include "rmw_connextdds/rmw_waitset_dds.hpp"
-#else
 #include "rmw_connextdds/rmw_waitset_std.hpp"
-#endif /* RMW_CONNEXT_CPP_STD_WAITSETS */
 
 /******************************************************************************
  * Node support
@@ -300,20 +297,6 @@ public:
     return DDS_Publisher_get_participant(pub);
   }
 
-#if RMW_CONNEXT_CPP_STD_WAITSETS
-  DDS_Condition *
-  dds_condition() const
-  {
-    return this->_dds_condition;
-  }
-
-  rmw_ret_t
-  enable_status(const DDS_StatusMask status_mask);
-
-  rmw_ret_t
-  disable_status(const DDS_StatusMask status_mask);
-#endif /* RMW_CONNEXT_CPP_STD_WAITSETS */
-
 private:
   rmw_context_impl_t * ctx;
   DDS_DataWriter * dds_writer;
@@ -321,9 +304,6 @@ private:
   const bool created_topic;
   rmw_gid_t ros_gid;
   RMW_Connext_PublisherStatusCondition status_condition;
-#if RMW_CONNEXT_CPP_STD_WAITSETS
-  DDS_Condition * _dds_condition;
-#endif /* RMW_CONNEXT_CPP_STD_WAITSETS */
 
   RMW_Connext_Publisher(
     rmw_context_impl_t * const ctx,
@@ -494,17 +474,9 @@ public:
       }
     }
 
-#if RMW_CONNEXT_CPP_STD_WAITSETS
-    // Update loan guard condition's trigger value for internal endpoints
-    if (nullptr != this->_loan_guard_condition) {
-      if (DDS_RETCODE_OK != DDS_GuardCondition_set_trigger_value(
-          this->_loan_guard_condition, this->loan_len > 0))
-      {
-        RMW_CONNEXT_LOG_ERROR_SET("failed to set internal reader condition's trigger")
-        return RMW_RET_ERROR;
-      }
+    if (this->internal) {
+      return this->status_condition.trigger_loan_guard_condition(this->loan_len > 0);
     }
-#endif /* RMW_CONNEXT_CPP_STD_WAITSETS */
 
     return RMW_RET_OK;
   }
@@ -579,27 +551,6 @@ public:
   const bool internal;
   const bool ignore_local;
 
-#if RMW_CONNEXT_CPP_STD_WAITSETS
-  DDS_Condition *
-  dds_condition() const
-  {
-    return this->_dds_condition;
-  }
-
-  DDS_Condition *
-  data_condition() const
-  {
-    return (nullptr != this->_loan_guard_condition) ?
-           DDS_GuardCondition_as_condition(this->_loan_guard_condition) : nullptr;
-  }
-
-  rmw_ret_t
-  enable_status(const DDS_StatusMask status_mask);
-
-  rmw_ret_t
-  disable_status(const DDS_StatusMask status_mask);
-#endif /* RMW_CONNEXT_CPP_STD_WAITSETS */
-
 private:
   rmw_context_impl_t * ctx;
   DDS_DataReader * dds_reader;
@@ -614,10 +565,6 @@ private:
   size_t loan_len;
   size_t loan_next;
   std::mutex loan_mutex;
-#if RMW_CONNEXT_CPP_STD_WAITSETS
-  DDS_Condition * _dds_condition;
-  DDS_GuardCondition * _loan_guard_condition;
-#endif /* RMW_CONNEXT_CPP_STD_WAITSETS */
 
   RMW_Connext_Subscriber(
     rmw_context_impl_t * const ctx,

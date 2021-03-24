@@ -22,9 +22,9 @@ DDS_Condition *
 RMW_Connext_Event::condition(const rmw_event_t * const event)
 {
   if (RMW_Connext_Event::reader_event(event)) {
-    return RMW_Connext_Event::subscriber(event)->dds_condition();
+    return RMW_Connext_Event::subscriber(event)->condition()->dds_condition();
   } else {
-    return RMW_Connext_Event::publisher(event)->dds_condition();
+    return RMW_Connext_Event::publisher(event)->condition()->dds_condition();
   }
 }
 
@@ -32,10 +32,10 @@ rmw_ret_t
 RMW_Connext_Event::enable(rmw_event_t * const event)
 {
   if (RMW_Connext_Event::reader_event(event)) {
-    return RMW_Connext_Event::subscriber(event)->enable_status(
+    return RMW_Connext_Event::subscriber(event)->condition()->enable_statuses(
       static_cast<DDS_StatusMask>(ros_event_to_dds(event->event_type, nullptr)));
   } else {
-    return RMW_Connext_Event::publisher(event)->enable_status(
+    return RMW_Connext_Event::publisher(event)->condition()->enable_statuses(
       static_cast<DDS_StatusMask>(ros_event_to_dds(event->event_type, nullptr)));
   }
 }
@@ -44,10 +44,10 @@ rmw_ret_t
 RMW_Connext_Event::disable(rmw_event_t * const event)
 {
   if (RMW_Connext_Event::reader_event(event)) {
-    return RMW_Connext_Event::subscriber(event)->disable_status(
+    return RMW_Connext_Event::subscriber(event)->condition()->disable_statuses(
       static_cast<DDS_StatusMask>(ros_event_to_dds(event->event_type, nullptr)));
   } else {
-    return RMW_Connext_Event::publisher(event)->disable_status(
+    return RMW_Connext_Event::publisher(event)->condition()->disable_statuses(
       static_cast<DDS_StatusMask>(ros_event_to_dds(event->event_type, nullptr)));
   }
 }
@@ -562,8 +562,10 @@ RMW_Connext_SubscriberStatusCondition::install(
 
 RMW_Connext_SubscriberStatusCondition::RMW_Connext_SubscriberStatusCondition(
   DDS_DataReader * const reader,
-  const bool ignore_local)
-: ignore_local(ignore_local),
+  const bool ignore_local,
+  const bool internal)
+: RMW_Connext_StatusCondition(DDS_DataReader_as_entity(reader)),
+  ignore_local(ignore_local),
   participant_handle(
     DDS_Entity_get_instance_handle(
       DDS_DomainParticipant_as_entity(
@@ -574,8 +576,26 @@ RMW_Connext_SubscriberStatusCondition::RMW_Connext_SubscriberStatusCondition(
   triggered_qos(false),
   triggered_sample_lost(false),
   triggered_data(false),
+  _loan_guard_condition(nullptr),
   sub(nullptr)
-{}
+{
+  if (internal) {
+    this->_loan_guard_condition = DDS_GuardCondition_new();
+    if (nullptr == this->_loan_guard_condition) {
+      RMW_CONNEXT_LOG_ERROR_SET("failed to allocate internal reader condition")
+      throw new std::runtime_error("failed to allocate internal reader condition");
+    }
+  }
+}
+
+RMW_Connext_SubscriberStatusCondition::~RMW_Connext_SubscriberStatusCondition()
+{
+  if (nullptr != this->_loan_guard_condition) {
+    if (DDS_RETCODE_OK != DDS_GuardCondition_delete(this->_loan_guard_condition)) {
+      RMW_CONNEXT_LOG_ERROR_SET("failed to delete internal reader condition")
+    }
+  }
+}
 
 void
 RMW_Connext_SubscriberStatusCondition::on_data()
@@ -589,12 +609,8 @@ RMW_Connext_SubscriberStatusCondition::on_data()
   }
 
   // Update loan guard condition's trigger value for internal endpoints
-  if (nullptr != this->sub && nullptr != this->sub->_loan_guard_condition) {
-    if (DDS_RETCODE_OK != DDS_GuardCondition_set_trigger_value(
-        this->sub->_loan_guard_condition, DDS_BOOLEAN_TRUE))
-    {
-      RMW_CONNEXT_LOG_ERROR_SET("failed to set internal reader condition's trigger")
-    }
+  if (nullptr != this->_loan_guard_condition) {
+    (void)this->trigger_loan_guard_condition(true);
   }
 }
 
@@ -757,8 +773,10 @@ RMW_Connext_PublisherStatusCondition::install(
   return RMW_RET_OK;
 }
 
-RMW_Connext_PublisherStatusCondition::RMW_Connext_PublisherStatusCondition()
-: triggered_deadline(false),
+RMW_Connext_PublisherStatusCondition::RMW_Connext_PublisherStatusCondition(
+  DDS_DataWriter * const writer)
+: RMW_Connext_StatusCondition(DDS_DataWriter_as_entity(writer)),
+  triggered_deadline(false),
   triggered_liveliness(false),
   triggered_qos(false)
 {
@@ -861,3 +879,4 @@ RMW_Connext_PublisherStatusCondition::update_status_qos(
   this->triggered_qos = true;
 }
 #endif /* !RMW_CONNEXT_CPP_STD_WAITSETS */
+

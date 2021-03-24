@@ -281,9 +281,10 @@ protected:
 class RMW_Connext_GuardCondition : public RMW_Connext_Condition
 {
 public:
-  RMW_Connext_GuardCondition()
+  explicit RMW_Connext_GuardCondition(const bool internal)
   : gcond(DDS_GuardCondition_new())
   {
+    UNUSED_ARG(internal);
     if (nullptr == this->gcond) {
       RMW_CONNEXT_LOG_ERROR_SET("failed to allocate dds guard condition")
       throw std::runtime_error("failed to allocate dds guard condition");
@@ -460,6 +461,66 @@ public:
   virtual rmw_ret_t
   get_status(const rmw_event_type_t event_type, void * const event_info);
 
+  // Helper functions to retrieve status information
+  inline rmw_ret_t
+  get_liveliness_lost_status(rmw_liveliness_lost_status_t * const status)
+  {
+    DDS_LivelinessLostStatus dds_status = DDS_LivelinessLostStatus_INITIALIZER;
+
+    if (DDS_RETCODE_OK !=
+      DDS_DataWriter_get_liveliness_lost_status(this->writer, &dds_status))
+    {
+      RMW_CONNEXT_LOG_ERROR_SET("failed to get liveliness lost status")
+      return RMW_RET_ERROR;
+    }
+
+    status->total_count = dds_status.total_count;
+    status->total_count_change = dds_status.total_count_change;
+
+    return RMW_RET_OK;
+  }
+
+  inline rmw_ret_t
+  get_offered_deadline_missed_status(
+    rmw_offered_deadline_missed_status_t * const status)
+  {
+    DDS_OfferedDeadlineMissedStatus dds_status = DDS_OfferedDeadlineMissedStatus_INITIALIZER;
+
+    if (DDS_RETCODE_OK !=
+      DDS_DataWriter_get_offered_deadline_missed_status(this->writer, &dds_status))
+    {
+      RMW_CONNEXT_LOG_ERROR_SET("failed to get offered deadline missed status")
+      return RMW_RET_ERROR;
+    }
+
+    status->total_count = dds_status.total_count;
+    status->total_count_change = dds_status.total_count_change;
+
+    return RMW_RET_OK;
+  }
+
+  inline rmw_ret_t
+  get_offered_qos_incompatible_status(
+    rmw_offered_qos_incompatible_event_status_t * const status)
+  {
+    DDS_OfferedIncompatibleQosStatus dds_status =
+      DDS_OfferedIncompatibleQosStatus_INITIALIZER;
+
+    if (DDS_RETCODE_OK !=
+      DDS_DataWriter_get_offered_incompatible_qos_status(this->writer, &dds_status))
+    {
+      RMW_CONNEXT_LOG_ERROR_SET("failed to get offered incompatible qos status")
+      return RMW_RET_ERROR;
+    }
+
+    status->total_count = dds_status.total_count;
+    status->total_count_change = dds_status.total_count_change;
+    status->last_policy_kind =
+      dds_qos_policy_to_rmw_qos_policy(dds_status.last_policy_id);
+
+    return RMW_RET_OK;
+  }
+
 protected:
   DDS_DataWriter * const writer;
 };
@@ -469,7 +530,8 @@ class RMW_Connext_SubscriberStatusCondition : public RMW_Connext_StatusCondition
 public:
   RMW_Connext_SubscriberStatusCondition(
     DDS_DataReader * const reader,
-    const bool ignore_local)
+    const bool ignore_local,
+    const bool internal)
   : RMW_Connext_StatusCondition(DDS_DataReader_as_entity(reader)),
     ignore_local(ignore_local),
     participant_handle(
@@ -481,6 +543,7 @@ public:
     dcond(nullptr),
     attached_waitset_dcond(nullptr)
   {
+    UNUSED_ARG(internal);
     this->dcond = DDS_GuardCondition_new();
     if (nullptr == this->dcond) {
       RMW_CONNEXT_LOG_ERROR_SET("failed to create reader's data condition")
@@ -538,9 +601,10 @@ public:
       return rc;
     }
     if (nullptr != this->attached_waitset_dcond) {
+      RMW_Connext_WaitSet * const ws = this->attached_waitset_dcond;
+      this->attached_waitset_dcond = nullptr;
       return RMW_Connext_Condition::detach(
-        this->attached_waitset_dcond->waitset,
-        DDS_GuardCondition_as_condition(this->dcond));
+        ws->waitset, DDS_GuardCondition_as_condition(this->dcond));
     }
     return RMW_RET_OK;
   }
@@ -559,6 +623,97 @@ public:
 
   const bool ignore_local;
   const DDS_InstanceHandle_t participant_handle;
+
+  // Methods for "internal" subscribers only
+  inline rmw_ret_t
+  trigger_loan_guard_condition(const bool trigger_value)
+  {
+    UNUSED_ARG(trigger_value);
+    return RMW_RET_OK;
+  }
+
+  // Helper functions to retrieve status information
+  inline rmw_ret_t
+  get_liveliness_changed_status(rmw_liveliness_changed_status_t * const status)
+  {
+    DDS_LivelinessChangedStatus dds_status = DDS_LivelinessChangedStatus_INITIALIZER;
+
+    if (DDS_RETCODE_OK !=
+      DDS_DataReader_get_liveliness_changed_status(this->reader, &dds_status))
+    {
+      RMW_CONNEXT_LOG_ERROR_SET("failed to get liveliness changed status")
+      return RMW_RET_ERROR;
+    }
+
+    status->alive_count = dds_status.alive_count;
+    status->alive_count_change = dds_status.alive_count_change;
+    status->not_alive_count = dds_status.not_alive_count;
+    status->not_alive_count_change = dds_status.not_alive_count_change;
+
+    return RMW_RET_OK;
+  }
+
+  inline rmw_ret_t
+  get_requested_deadline_missed_status(
+    rmw_requested_deadline_missed_status_t * const status)
+  {
+    DDS_RequestedDeadlineMissedStatus dds_status =
+      DDS_RequestedDeadlineMissedStatus_INITIALIZER;
+
+    if (DDS_RETCODE_OK !=
+      DDS_DataReader_get_requested_deadline_missed_status(this->reader, &dds_status))
+    {
+      RMW_CONNEXT_LOG_ERROR_SET("failed to get requested deadline missed status")
+      return RMW_RET_ERROR;
+    }
+
+    status->total_count = dds_status.total_count;
+    status->total_count_change = dds_status.total_count_change;
+
+    return RMW_RET_OK;
+  }
+
+  inline rmw_ret_t
+  get_requested_qos_incompatible_status(
+    rmw_requested_qos_incompatible_event_status_t * const status)
+  {
+    DDS_RequestedIncompatibleQosStatus dds_status =
+      DDS_RequestedIncompatibleQosStatus_INITIALIZER;
+
+    if (DDS_RETCODE_OK !=
+      DDS_DataReader_get_requested_incompatible_qos_status(this->reader, &dds_status))
+    {
+      RMW_CONNEXT_LOG_ERROR_SET("failed to get requested incompatible qos status")
+      return RMW_RET_ERROR;
+    }
+
+    status->total_count = dds_status.total_count;
+    status->total_count_change = dds_status.total_count_change;
+    status->last_policy_kind =
+      dds_qos_policy_to_rmw_qos_policy(dds_status.last_policy_id);
+
+    return RMW_RET_OK;
+  }
+
+#if RMW_CONNEXT_HAVE_MESSAGE_LOST
+  inline rmw_ret_t
+  get_message_lost_status(rmw_message_lost_status_t * const status)
+  {
+    DDS_SampleLostStatus dds_status = DDS_SampleLostStatus_INITIALIZER;
+
+    if (DDS_RETCODE_OK !=
+      DDS_DataReader_get_sample_lost_status(this->reader, &dds_status))
+    {
+      RMW_CONNEXT_LOG_ERROR_SET("failed to get sample lost status")
+      return RMW_RET_ERROR;
+    }
+
+    status->total_count = dds_status.total_count;
+    status->total_count_change = dds_status.total_count_change;
+
+    return RMW_RET_OK;
+  }
+#endif /* RMW_CONNEXT_HAVE_MESSAGE_LOST */
 
 protected:
   rmw_ret_t
