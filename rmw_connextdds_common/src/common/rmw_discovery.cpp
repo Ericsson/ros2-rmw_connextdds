@@ -141,14 +141,6 @@ rmw_connextdds_discovery_thread(rmw_context_impl_t * ctx)
   attached_partinfo = true;
   attached_conditions += 1;
 
-  if (RMW_RET_OK != sub_partinfo->condition()->attach_data()) {
-    RMW_CONNEXT_LOG_ERROR_SET(
-      "failed to attach data participant info condition to "
-      "discovery thread waitset")
-    goto cleanup;
-  }
-  attached_conditions += 1;
-
   if (RMW_RET_OK != gcond_exit->_attach(waitset)) {
     RMW_CONNEXT_LOG_ERROR_SET(
       "failed to attach exit condition to discovery thread waitset")
